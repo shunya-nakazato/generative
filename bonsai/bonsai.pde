@@ -1,9 +1,11 @@
+import java.util.List;
+import java.util.ArrayList;
+
 class Branch {
   float this_x, this_y;
   float this_endx, this_endy;
   float this_weight, this_last_weight, this_length, this_angle;
   float this_age = 0;
-  float[][] this_last_boundary_points = {};
   float this_length_noise = random(10);
   float this_weight_noise = random(10);
   float this_angle_noise = random(10);
@@ -11,28 +13,27 @@ class Branch {
   float this_y_noise = random(10);
   float this_branch_probability = 0.90;
   boolean this_end_flag = false;
+  List<HashMap<String, Float>> this_positions = new ArrayList<>();
+  List<HashMap<String, Float>> leaf_positions = new ArrayList<>();
   Branch[] branches = {};
   
-  Branch(float len, float weight, float angle, float x, float y, float[][] boundary_points) {
+  Branch(float len, float weight, float angle, float x, float y) {
     this_x = x;
     this_y = y;
     this_length = len;
     this_last_weight = weight;
     this_weight = weight;
     this_angle = angle;
-    float radian = radians(this_angle);
-    float[][] this_boundary_points = boundary_points;
-    for(int i=0; i<this_last_weight; i++) {
-      float d = i - (this_last_weight);
-      float x_d = this_x + (d * sin(radian));
-      float y_d = this_y + (d * cos(radian));
-      float[] point = {x_d, y_d};
-      this_boundary_points = (float[][])append(this_boundary_points, point);
-    }
-    this_last_boundary_points = this_boundary_points;
+
+    HashMap<String, Float> position = new HashMap<String, Float>();
+    position.put("x", x);
+    position.put("y", y);
+    position.put("weight", weight);
+    position.put("angle", angle);
+    this_positions.add(position);
   };
   
-  void step() {
+  boolean step() {
     this_age++;
 
     if(this_weight > 20) {
@@ -53,7 +54,7 @@ class Branch {
       this_angle_noise += 0.3;
 
       addBranch();
-      drawMe();
+      updatePosition();
     } 
     else if (this_weight > 12.5) {
       this_branch_probability = 0.8;
@@ -74,7 +75,7 @@ class Branch {
       this_angle_noise += 0.3;
       
       addBranch();
-      drawMe();
+      updatePosition();
     }
     else if (this_weight > 3.0) {
       this_branch_probability = 0.85;
@@ -94,14 +95,16 @@ class Branch {
       this_angle_noise += 0.3;
       
       addBranch();
-      drawMe();
+      updatePosition();
     }
     else {
-      drawLeaf(this_x, this_y);
+      this_end_flag = true;
     }
+    boolean end_flag = this_end_flag;
     for(int i=0; i<branches.length; i++) {
-      branches[i].step();
+      end_flag = branches[i].step();
     }
+    return end_flag;
   }
 
   void addBranch() {
@@ -109,42 +112,39 @@ class Branch {
       float branch_angle = this_angle + random(120) + 30;
       float branch_length = this_length;
       float branch_weight = this_weight * (random(1) * 0.5 + 0.5) * 0.8;
-      branches = (Branch[])append(branches, new Branch(branch_length, branch_weight, branch_angle, this_x, this_y, this_last_boundary_points));
+      branches = (Branch[])append(branches, new Branch(branch_length, branch_weight, branch_angle, this_x, this_y));
     }
   }
 
   void autoPrune() {
     // 美的価値に基づく自動剪定ロジック
 
-    // 1. 交差する枝を剪定
+    // 交差する枝を剪定
     for(int i=0; i<branches.length; i++) {
       if(branches.length > 1 && i < branches.length - 1) {
-        Branch branch1 = branches[i];
         for(int j=i+1; j<branches.length; j++) {
-          Branch branch2 = branches[j];
-          // 単純化した交差判定 (実際にはもっと複雑)
-          float angle_diff = abs(branch1.this_angle - branch2.this_angle);
+          float angle_diff = abs(branches[i].this_angle - branches[j].this_angle);
           if(angle_diff < 20 || angle_diff > 340) {
             // 角度が近すぎる場合、若い方の枝を剪定
-            if(branch1.this_age < branch2.this_age) {
-              // branch1.is_pruned = true;
+            if(branches[i].this_age < branches[j].this_age) {
+              branches[i]=branches[branches.length - 1];
+              branches = (Branch[])shorten(branches);
             } else {
-              // branch2.is_pruned = true;
+              branches[j]=branches[branches.length - 1];
+              branches = (Branch[])shorten(branches);
             }
           }
         }
       }
     }
 
-    // 2. 垂直に伸びすぎた枝を剪定
+    // 垂直に伸びすぎた枝を剪定
     for(int i=0; i<branches.length; i++) {
       float branch_angle = branches[i].this_angle % 360;
       if((branch_angle > 80 && branch_angle < 100) || 
           (branch_angle > 260 && branch_angle < 280)) {
-        // ほぼ垂直な枝を確率的に剪定
-        if(random(1) < 0.3) {
-          // branches[i].is_pruned = true;
-        }
+        branches[i]=branches[branches.length - 1];
+        branches = (Branch[])shorten(branches);
       }
     }
 
@@ -152,57 +152,102 @@ class Branch {
     // このロジックは実装が複雑なため省略
   }
 
-  void drawMe() {
+  void updatePosition() {
+    HashMap<String, Float> position = new HashMap<String, Float>();
     float radian = radians(this_angle);
+    this_x = this_x + (this_length * cos(radian));
+    this_y = this_y + (this_length * sin(radian));
+    position.put("x", this_x);
+    position.put("y", this_y);
+    position.put("weight", this_weight);
+    position.put("angle", this_angle);
+    this_positions.add(position);
+  }
+
+  void drawMe() {
+    for(int i = 0; i < branches.length; i++) {
+      branches[i].drawMe();
+    }
 
     noFill();
     strokeWeight(strokeWeight);
 
-    this_endx = this_x + (this_length * cos(radian));
-    this_endy = this_y + (this_length * sin(radian));
+    for(int i = 0; i < this_positions.size() - 1; i++) {
+      float x = this_positions.get(i).get("x");
+      float y = this_positions.get(i).get("y");
+      float angle = this_positions.get(i).get("angle");
+      float weight = this_positions.get(i).get("weight");
+      
+      float end_x = this_positions.get(i + 1).get("x");
+      float end_y = this_positions.get(i + 1).get("y");
+      float end_angle = this_positions.get(i + 1).get("angle");
+      float end_weight = this_positions.get(i + 1).get("weight");
+      
+      float x_noise = this_x_noise;
+      
+      float radian = radians(angle);
+      float[][] boundary_points = {};
+      
+      for(int j=0; j<weight; j++) {
+        float d = j - (weight);
+        float x_d = x + (d * sin(radian));
+        float y_d = y + (d * cos(radian));
+        float[] point = {x_d, y_d};
+        boundary_points = (float[][])append(boundary_points, point);
+      }
 
-    float[][] boundary_points = {};
-    float x_noise = this_x_noise;
-    for(int i=0; i<this_weight; i++) {
-      float d = i - (this_weight);
-      float x_d = this_endx + (d * sin(radian));
-      float y_d = this_endy + (d * cos(radian));
-      float[] point = {x_d, y_d};
-      boundary_points = (float[][])append(boundary_points, point);
+      float end_radian = radians(end_angle);
+      float[][] end_boundary_points = {};
+      
+      for(int j=0; j<end_weight; j++) {
+        float d = j - (end_weight);
+        float x_d = end_x + (d * sin(end_radian));
+        float y_d = end_y + (d * cos(end_radian));
+        float[] point = {x_d, y_d};
+        end_boundary_points = (float[][])append(end_boundary_points, point);
 
-      stroke(30, (int)(noise(x_noise) * 50 + 25), (int)(noise(x_noise) * 25 + 25));
-      line(this_last_boundary_points[i][0], this_last_boundary_points[i][1], boundary_points[i][0], boundary_points[i][1]);
+        stroke(30, (int)(noise(x_noise) * 50 + 25), (int)(noise(x_noise) * 25 + 25));
+        line(boundary_points[j][0], boundary_points[j][1], end_boundary_points[j][0], end_boundary_points[j][1]);
 
-      x_noise += 0.03;
-      this_y_noise += 0.01;
+        x_noise += 0.03;
+        this_y_noise += 0.01;
+      }
     }
-    //line(this_x, this_y, this_endx, this_endy);
-    this_x = this_endx;
-    this_y = this_endy;
-    this_last_boundary_points = boundary_points;
+
+    float leaf_x = this_positions.get(this_positions.size() - 1).get("x");
+    float leaf_y = this_positions.get(this_positions.size() - 1).get("y");
+    HashMap<String, Float> leaf_position = new HashMap<String, Float>();
+    leaf_position.put("x", leaf_x);
+    leaf_position.put("y", leaf_y);
+    leaf_positions.add(leaf_position);
   }
   
-  void drawLeaf(float x, float y) {
-    if(this_end_flag == true) return;
-
-    int leaf_count = int(random(100, 120)); // 葉の密度を調整
-
-    for(int i=0; i<leaf_count; i++) {
-      float angle = random(220) + 180;
-      if(angle > 360) { angle -= 360; }
-      if(angle < 0) { angle += 360; }
-
-      float radian = radians(angle);
-      float leaf_length = random(15) + 10;
-      float endx = x + (leaf_length * cos(radian));
-      float endy = y + (leaf_length * sin(radian));
-
-      noFill();
-      strokeWeight(strokeWeight);
-      stroke(100, (int)random(20) + 50, (int)random(20) + 50);
-      line(x, y, endx, endy);
+  void drawLeaf() {
+    for(int i = 0; i < branches.length; i++) {
+      branches[i].drawLeaf();
     }
-    this_end_flag = true;
+    
+    for(int i = 0; i < leaf_positions.size(); i++) {
+      float x = leaf_positions.get(i).get("x");
+      float y = leaf_positions.get(i).get("y");
+      int leaf_count = int(random(100, 120)); // 葉の密度を調整
+  
+      for(int j=0; j<leaf_count; j++) {
+        float angle = random(220) + 180;
+        if(angle > 360) { angle -= 360; }
+        if(angle < 0) { angle += 360; }
+  
+        float radian = radians(angle);
+        float leaf_length = random(15) + 10;
+        float endx = x + (leaf_length * cos(radian));
+        float endy = y + (leaf_length * sin(radian));
+  
+        noFill();
+        strokeWeight(strokeWeight);
+        stroke(100, (int)random(20) + 50, (int)random(20) + 50);
+        line(x, y, endx, endy);
+      }
+    }
   }
 }
 
@@ -239,11 +284,21 @@ void setup() {
   fill(0);
   rect(0, rect_y, 1280, 1280);
 
-  trunk = new Branch(init_len, init_weight, init_angle, x, y, init_boundary_points);
+  trunk = new Branch(init_len, init_weight, init_angle, x, y);
   trunk.step();
   image(img, hachi_x, hachi_y, hachi_width, hachi_height);
 }
 
+boolean is_draw = true;
+
 void draw() {
-    trunk.step();
+  boolean end_flag = trunk.step();
+  if(end_flag && is_draw) {
+      trunk.drawMe();
+      trunk.drawLeaf();
+      is_draw = false;
+  };
+}
+
+void exit() {
 }
